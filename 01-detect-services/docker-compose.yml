@@ -1,0 +1,33 @@
+version: '3'
+
+services:
+  reverse-proxy:
+    image: traefik:v2.9
+    command: --api.insecure=true --providers.docker
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  service-one:
+    build:
+      context: ../base-microservice
+    container_name: one
+    labels:
+      - "traefik.http.routers.service-one.rule=Host(`service-one.docker.localhost`)"
+    environment:
+      API_HOST: '0.0.0.0'
+      API_PORT: 5000
+      API_MESSAGE_RESPONSE: 'service-one'
+
+  service-two:
+    build:
+      context: ../base-microservice
+    container_name: two
+    labels:
+      - "traefik.http.routers.service-two.rule=Host(`service-two.docker.localhost`)"
+    environment:
+      API_HOST: '0.0.0.0'
+      API_PORT: 5000
+      API_MESSAGE_RESPONSE: 'service-two'
