@@ -1,0 +1,76 @@
+version: '3'
+
+services:
+  reverse-proxy:
+    image: traefik:v2.9
+    restart: always
+    command: --api.insecure=true --providers.docker
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.docker.network=traefik-network"
+
+  service-one:
+    build:
+      context: ../base-microservice
+    container_name: one
+    restart: always
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.docker.network=traefik-network"
+      - "traefik.http.routers.service-one.rule=Host(`service-one.docker.localhost`)"
+      - "traefik.http.middlewares.auth-success.forwardauth.address=http://service-auth:5000/api/v1.0.0/auth/success"
+      - "traefik.http.routers.service-one.middlewares=auth-success"
+    environment:
+      API_HOST: '0.0.0.0'
+      API_PORT: 5000
+      API_MESSAGE_RESPONSE: 'service-one'
+    depends_on:
+      - service-auth
+
+  service-two:
+    build:
+      context: ../base-microservice
+    container_name: two
+    restart: always
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.docker.network=traefik-network"
+      - "traefik.http.routers.service-two.rule=Host(`service-two.docker.localhost`)"
+      - "traefik.http.middlewares.auth-denied.forwardauth.address=http://service-auth:5000/api/v1.0.0/auth/denied"
+      - "traefik.http.routers.service-two.middlewares=auth-denied"
+    environment:
+      API_HOST: '0.0.0.0'
+      API_PORT: 5000
+      API_MESSAGE_RESPONSE: 'service-two'
+    depends_on:
+      - service-auth
+
+  service-auth:
+    build:
+      context: ../base-microservice
+    container_name: auth
+    restart: always
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.docker.network=traefik-network"
+      - "traefik.http.routers.service-auth.rule=Host(`service-auth.docker.localhost`)"
+    environment:
+      API_HOST: '0.0.0.0'
+      API_PORT: 5000
+      API_MESSAGE_RESPONSE: 'service-auth'
+    depends_on:
+      - reverse-proxy
+    ports:
+      - "5000:5000"
+
+networks:
+  traefik-network:
