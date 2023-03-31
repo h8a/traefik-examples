@@ -1,6 +1,6 @@
 import falcon.asgi
 
-from resources.auth import Auth
+from resources.auth import Auth, AuthHeaders
 from resources.message import MessageResource
 
 class Service(falcon.asgi.App):
@@ -10,3 +10,4 @@ class Service(falcon.asgi.App):
 
         self.add_route('/api/v1.0.0/messages', MessageResource())
         self.add_route('/api/v1.0.0/auth', Auth())
+        self.add_route('/api/v1.0.0/auth/headers', AuthHeaders())
