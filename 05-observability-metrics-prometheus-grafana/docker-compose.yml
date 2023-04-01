@@ -1,0 +1,151 @@
+version: '3'
+
+services:
+  reverse-proxy:
+    image: traefik:v2.9
+    restart: always
+    command: 
+      - --api.insecure=true
+      - --providers.docker
+      - --metrics.prometheus=true
+      - --entryPoints.metrics.address=:8082
+      - --metrics.prometheus.entryPoint=metrics
+      - --entryPoints.web.address=:80
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.docker.network=traefik-network"
+
+  prometheus:
+    image: prom/prometheus:v2.43.0
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    restart: always
+    networks:
+      - traefik-network
+    depends_on:
+      - reverse-proxy
+
+  grafana:
+    image: grafana/grafana:8.3.3
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - traefik-network
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      - GF_DEFAULT_APP_MODE=production
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_AUTH_BASIC_ENABLED=false
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+      - GF_AUTH_DISABLE_SIGNOUT_MENU=false
+      - GF_AUTH_GENERIC_OAUTH_ENABLED=false
+      - GF_AUTH_GITHUB_ENABLED=false
+      - GF_AUTH_GOOGLE_ENABLED=false
+      - GF_AUTH_LDAP_ENABLED=false
+      - GF_AUTH_PROXY_ENABLED=false
+      - GF_AUTH_SIGNOUT_REDIRECT_URL=/
+      - GF_AUTH_TOKEN_AUTH_ENABLED=false
+      - GF_AUTH_WEBAUTH_HEADER_NAME=X-WEBAUTH-USER
+      - GF_AUTH_WEBAUTH_HEADER_PROPERTY=email
+      - GF_AUTH_WEBAUTH_HEADER_SEPARATOR=,
+      - GF_AUTH_WEBAUTH_PROXY_HEADERS=X-Forwarded-Email
+      - GF_AUTH_WEBAUTH_SIGNOUT_URL=/
+      - GF_AUTH_WEBAUTH_USER_PROPERTY=email
+      - GF_LOG_MODE=console
+      - GF_METRICS_PROMETHEUS_ADDRESS=prometheus:9090
+    depends_on:
+      - prometheus
+
+  service-one:
+    build:
+      context: ../base-microservice
+    container_name: one
+    restart: always
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.docker.network=traefik-network"
+      - "traefik.http.routers.service-one.rule=Host(`service-one.docker.localhost`)"
+      - "traefik.http.routers.service-one.middlewares=auth-success"
+      - "traefik.http.middlewares.service-auth.forwardauth.address=http://service-auth:5000/api/v1.0.0/auth"
+      - "traefik.http.middlewares.service-valid-one.forwardauth.address=http://service-valid-one:5000/api/v1.0.0/auth/headers"
+      - "traefik.http.middlewares.service-valid-one.forwardauth.authResponseHeaders=CUSTOM-HEADER"
+      - "traefik.http.middlewares.service-valid-two.forwardauth.address=http://service-valid-two:5000/api/v1.0.0/auth/headers"
+      - "traefik.http.middlewares.service-valid-two.forwardauth.authResponseHeaders=CUSTOM-HEADER"
+      - "traefik.http.middlewares.auth-success.chain.middlewares=service-auth,service-valid-one,service-valid-two"
+    environment:
+      API_HOST: '0.0.0.0'
+      API_PORT: 5000
+      API_MESSAGE_RESPONSE: 'service-one'
+    depends_on:
+      - service-auth
+
+  service-auth:
+    build:
+      context: ../base-microservice
+    container_name: auth
+    restart: always
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.docker.network=traefik-network"
+      - "traefik.http.routers.service-auth.rule=Host(`service-auth.docker.localhost`)"
+    environment:
+      API_HOST: '0.0.0.0'
+      API_PORT: 5000
+      API_MESSAGE_RESPONSE: 'service-auth'
+    depends_on:
+      - reverse-proxy
+
+  service-valid-one:
+    build:
+      context: ../base-microservice
+    container_name: valid-one
+    restart: always
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.docker.network=traefik-network"
+      - "traefik.http.routers.service-valid-one.rule=Host(`service-valid-one.docker.localhost`)"
+    environment:
+      API_HOST: '0.0.0.0'
+      API_PORT: 5000
+      CUSTOM_HEADER: 'service-valid-one'
+    depends_on:
+      - reverse-proxy
+
+  service-valid-two:
+    build:
+      context: ../base-microservice
+    container_name: valid-two
+    restart: always
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.docker.network=traefik-network"
+      - "traefik.http.routers.service-valid-two.rule=Host(`service-valid-two.docker.localhost`)"
+    environment:
+      API_HOST: '0.0.0.0'
+      API_PORT: 5000
+      CUSTOM_HEADER: 'service-valid-two'
+    depends_on:
+      - reverse-proxy
+
+networks:
+  traefik-network:
+
+volumes:
+  grafana_data:
